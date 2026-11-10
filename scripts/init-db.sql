@@ -1,0 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE DATABASE celery_db;
+CREATE DATABASE metabase_db;
+
+

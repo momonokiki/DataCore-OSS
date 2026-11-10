@@ -1,0 +1,145 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_password_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-datacore_db}
+    ports:
+      # ホスト側ツール（psql / DBeaver など）用。既定はローカル限定。
+      # LAN内の別端末から繋ぐ場合は .env で DB_BIND=0.0.0.0
+      - "${DB_BIND:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql  # pgvector 拡張の自動有効化
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-datacore_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    # ホスト側に公開しない（パスワードなしのため）。
+    # デバッグは docker compose exec redis redis-cli で行う
+    restart: always
+
+  # 🚀 Celery 分散タスクワーカーコンテナ
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # -c 1: 同時処理上限を1に絞り、重いOCR等のCPU/GPUリソース衝突を回避します
+    # -Q: リッスンするタスクキューを明示的に指定しています
+    command: celery -A app.tasks.celery_app worker --loglevel=INFO -c 1 -E -Q ocr_tasks,embed_tasks,parse_tasks
+    env_file:
+      - .env
+    environment:
+      PYTHONPATH: /app
+    volumes:
+      # 開発時はソースをバインドマウント（再ビルドなしでコード反映）。
+      # バインドマウントを外す場合も env_file で設定は届く。
+      - .:/app
+      # ★ Hugging Face 系モデル（transformers の from_pretrained）のキャッシュを永続化。
+      #   コンテナを作り直してもモデルの再ダウンロードを通常は回避できる。
+      #   ※ YomiToku のモデルがこのボリュームで永続化されるかは未検証。
+      - hf_cache:/app/.cache
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # 🌸 Celery Flower (リアルタイムWeb管理・監視UI)
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # --basic-auth: LAN内など外部から見る場合の簡易認証（.env の FLOWER_AUTH_* で変更）
+    command: celery -A app.tasks.celery_app flower --port=5555 --basic-auth=${FLOWER_AUTH_USER:-flower}:${FLOWER_AUTH_PASS:-flowerpass}
+    env_file:
+      - .env
+    environment:
+      PYTHONPATH: /app
+    ports:
+      # 既定はローカル限定。LAN内の別端末（スマホなど）から見る場合は
+      # .env で FLOWER_BIND=0.0.0.0 を指定する
+      - "${FLOWER_BIND:-127.0.0.1}:${FLOWER_PORT:-5555}:5555"
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  fastapi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uvicorn app.main:app --host ${FASTAPI_HOST:-0.0.0.0} --port 8000
+    ports:
+      # 既定はローカル限定。WebUIからのAPI呼び出しはDocker内部ネットワークで完結。
+      # 外部ツールやLAN内の別端末から直接呼ぶ場合は .env で API_BIND=0.0.0.0
+      - "${API_BIND:-127.0.0.1}:${WEB_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      - FASTAPI_ENV=${FASTAPI_ENV:-development}
+      - PYTHONPATH=/app
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  webui:
+    build:
+      context: .
+      dockerfile: app/webui/Dockerfile
+    working_dir: /app/app/webui
+    command: reflex run --loglevel info --env prod --single-port
+    ports:
+      - "${WEBUI_PORT:-3000}:3000"
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - API_URL=http://fastapi:8000
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      fastapi:
+        condition: service_started
+
+  # 📊 Metabase（データ分析UI）— オプション扱い。
+  # 起動する場合: ./init.sh up --analytics または docker compose --profile analytics up -d
+  metabase:
+    profiles:
+      - analytics
+    image: metabase/metabase:latest
+    ports:
+      # 既定はローカル限定（Metabase自身のログイン認証はある）。
+      # LAN内の別端末から見る場合は .env で METABASE_BIND=0.0.0.0
+      - "${METABASE_BIND:-127.0.0.1}:${METABASE_PORT:-3001}:3000"
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: ${METABASE_POSTGRES_DB:-metabase_db}
+      MB_DB_PORT: 5432
+      MB_DB_USER: ${POSTGRES_USER:-postgres}
+      MB_DB_PASS: ${POSTGRES_PASSWORD:-postgres_password_change_me}
+      MB_DB_HOST: db
+    volumes:
+      - metabase_data:/metabase-data
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  metabase_data:
+  hf_cache:

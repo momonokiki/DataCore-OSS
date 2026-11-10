@@ -1,0 +1,3 @@
+# OCR/Parser outputs may contain private receipt data
+results/
+datasets/private/

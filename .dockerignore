@@ -1,0 +1,44 @@
+# VCS and local environment
+.git
+.gitignore
+.env
+.env.*
+
+# Personal data, local state, and generated experiments
+data/
+storage/
+experiments/
+backups/
+uploads/
+exports/private/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+ENV/
+
+# Frontend/build artifacts and caches
+node_modules/
+.cache/
+app/webui/.web/
+app/webui/.states/
+app/webui/.reflex/
+
+# Local databases, logs, and backups
+*.log
+*.dump
+*.backup
+*.sql.gz
+*.sqlite
+*.sqlite3
+*.db
+*.db-*
+.DS_Store
+Thumbs.db

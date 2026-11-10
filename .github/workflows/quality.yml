@@ -1,0 +1,30 @@
+name: quality
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check init script syntax
+        run: bash -n init.sh
+
+      - name: Check Python syntax
+        run: python -m compileall -q app
+
+      - name: Validate Docker Compose configuration
+        run: |
+          cp env.example .env
+          docker compose config --quiet
+          rm -f .env

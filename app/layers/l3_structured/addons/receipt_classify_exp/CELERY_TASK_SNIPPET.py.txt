@@ -1,0 +1,38 @@
+# app/tasks.py に追加（parse_file_task の後など）
+@celery_app.task(name="tasks.classify_receipt_numeric", queue="parse_tasks")
+def classify_receipt_numeric_task(context: dict) -> dict:
+    if not isinstance(context, dict) or not context.get("file_hash"):
+        raise ValueError("L3 numeric classification requires file_hash context")
+
+    enabled = {
+        name.strip()
+        for name in settings.ENABLED_L3_ADDONS.split(",")
+        if name.strip()
+    }
+    if "receipt_classify_exp" not in enabled:
+        return {
+            **context,
+            "receipt_classify_exp_status": "skipped",
+            "reason": "addon_disabled",
+        }
+
+    if not context.get("artifact_id"):
+        return {
+            **context,
+            "receipt_classify_exp_status": "skipped",
+            "reason": "ocr_artifact_id_missing",
+        }
+
+    from app.layers.l3_structured.addons.receipt_classify_exp.service import (
+        classify_receipt_file,
+    )
+
+    async def run() -> dict:
+        async with AsyncSessionLocal() as session:
+            return await classify_receipt_file(
+                session=session,
+                file_hash=str(context["file_hash"]),
+                parent_ocr_id=str(context["artifact_id"]),
+            )
+
+    return {**context, **asyncio.run(run())}
