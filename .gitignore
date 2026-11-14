@@ -218,11 +218,6 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Dagsterのストレージや一時ファイル
-app/dagster/storage/
-app/dagster/.telemetry/
-
-storage
 
 # DataCore local configuration and secrets
 .env
@@ -267,7 +262,7 @@ app/webui/.reflex/
 secrets/
 
 # Local data and databases
-storage/
+/storage/
 uploads/
 logs/
 *.sqlite
