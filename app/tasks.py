@@ -2,59 +2,172 @@
 """
 Celery Task Registry
 
-各レイヤー・Addonに定義されたTaskを読み込み、
+L2およびL3 Addonに定義されたTaskを自動的に読み込み、
 Celeryへの登録と既存コードとの互換性を維持する。
 
-Taskの実装本体は各tasks.pyに配置する。
+Taskの実装本体は各レイヤー・Addonのtasks.pyに配置する。
 """
 
-# Celeryインスタンス
+import importlib
+from pathlib import Path
+from types import ModuleType
+
 from app.celery_app import celery_app
 
 
-# ---------------------------------------------------------
-# L2 Extracted Tasks
-# ---------------------------------------------------------
-from app.layers.l2_extracted.tasks import (
-    extract_media_info_task,
-    embed_image_file_task,
-    ocr_file_task,
-    embedding_file_task,
+# =========================================================
+# Configuration
+# =========================================================
+
+ADDONS_DIR = (
+    Path(__file__).resolve().parent
+    / "layers"
+    / "l3_structured"
+    / "addons"
 )
 
 
-# ---------------------------------------------------------
-# L3 Addon Tasks
-# ---------------------------------------------------------
-from app.layers.l3_structured.addons.receipt.tasks import (
-    parse_file_task,
-)
+# =========================================================
+# Task Registration
+# =========================================================
 
-from app.layers.l3_structured.addons.receipt_classify_exp.tasks import (
-    classify_receipt_numeric_task,
-)
+def register_task_module(
+    module: ModuleType,
+    registered_tasks: dict,
+) -> None:
+    """
+    Taskモジュールから *_task という名前の属性を取得し、
+    登録済みTaskとして管理する。
+    """
 
-from app.layers.l3_structured.addons.yomitoku_layout.tasks import (
-    reconstruct_yomitoku_layout_task,
-)
+    for name, task in vars(module).items():
 
-from app.layers.l3_structured.addons.finunce_parser.tasks import (
-    parse_finance_csv_task,
-)
+        if name.startswith("_") or not name.endswith("_task"):
+            continue
+
+        if not callable(task):
+            continue
+
+        if name in registered_tasks:
+            raise RuntimeError(
+                f"Duplicate Task export detected: {name} "
+                f"(module: {module.__name__})"
+            )
+
+        registered_tasks[name] = task
 
 
-# ---------------------------------------------------------
-# Public exports
-# ---------------------------------------------------------
-__all__ = [
-    "celery_app",
-    "extract_media_info_task",
-    "embed_image_file_task",
-    "ocr_file_task",
-    "embedding_file_task",
-    "parse_file_task",
-    "classify_receipt_numeric_task",
-    "reconstruct_yomitoku_layout_task",
-    "parse_finance_csv_task",
-]
+# =========================================================
+# Addon Discovery
+# =========================================================
+
+def discover_addon_task_modules() -> list[str]:
+    """
+    addonsディレクトリ以下からtasks.pyを再帰的に発見する。
+
+    発見したファイルをPythonのモジュールパスに変換する。
+    """
+
+    if not ADDONS_DIR.exists():
+        raise RuntimeError(
+            f"Addon directory not found: {ADDONS_DIR}"
+        )
+
+    module_names = []
+
+    for task_file in sorted(ADDONS_DIR.rglob("tasks.py")):
+
+        relative_path = task_file.relative_to(
+            Path(__file__).resolve().parent
+        )
+
+        module_name = ".".join(
+            relative_path.with_suffix("").parts
+        )
+
+        module_names.append(
+            f"app.{module_name}"
+        )
+
+    return module_names
+
+
+# =========================================================
+# Registry Initialization
+# =========================================================
+
+def initialize_task_registry() -> list[str]:
+    """
+    L2およびL3 AddonのTaskを読み込み、
+    app.tasksから利用できるように公開する。
+
+    Returns:
+        list[str]: 公開したTask名
+    """
+
+    registered_tasks = {}
+
+    # -----------------------------------------------------
+    # L2 Tasks
+    # -----------------------------------------------------
+
+    l2_module = importlib.import_module(
+        "app.layers.l2_extracted.tasks"
+    )
+
+    register_task_module(
+        l2_module,
+        registered_tasks,
+    )
+
+    # -----------------------------------------------------
+    # L3 Addon Tasks
+    # -----------------------------------------------------
+
+    addon_modules = discover_addon_task_modules()
+
+    print(
+        f"[Celery Registry] Discovered "
+        f"{len(addon_modules)} Addon Task module(s)."
+    )
+
+    for module_name in addon_modules:
+
+        print(
+            f"[Celery Registry] Loading: {module_name}"
+        )
+
+        module = importlib.import_module(module_name)
+
+        register_task_module(
+            module,
+            registered_tasks,
+        )
+
+    # -----------------------------------------------------
+    # Public Exports
+    # -----------------------------------------------------
+
+    globals().update(registered_tasks)
+
+    exported_names = [
+        "celery_app",
+        *registered_tasks.keys(),
+    ]
+
+    globals()["__all__"] = exported_names
+
+    print(
+        "[Celery Registry] Initialization completed. "
+        f"Exported tasks: {len(registered_tasks)}"
+    )
+
+    return exported_names
+
+
+# =========================================================
+# Initialization
+# =========================================================
+
+initialize_task_registry()
 
