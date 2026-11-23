@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 import reflex as rx
+import json
 
 API_URL = os.getenv("API_URL", "http://fastapi:8000")
 logger = logging.getLogger("reflex")
@@ -153,57 +154,46 @@ class WebUIState(rx.State):
         self.ingest_message = ""
         return rx.redirect("/")
 
-    async def handle_file_upload(self, files: List[rx.UploadFile]):
+    def handle_browser_upload_result(self, result: str):
         """
-        【本番セキュリティ仕様】
-        選択されたファイルを読み込み、AuthorizationヘッダーにJWTを添付して
-        FastAPIの /api/v1/ingest へマルチパート送信する
+        ブラウザからFastAPIへ直接送信した結果を受け取り、
+        アップロード結果を画面へ反映する。
         """
-        if not files:
-            self.ingest_message = "ファイルが選択されていません。"
-            return
-
-        self.is_loading = True
-        self.upload_results = []
-        self.ingest_message = ""
-
-        # マルチパートフォーム用データの組み立て
-        form_files = []
-        for file in files:
-            file_bytes = await file.read()
-            form_files.append(("files", (file.filename, file_bytes, file.content_type)))
-
-        # 💡 安全なJWT署名検証をバックエンドに強制させるためのヘッダー契約
-        headers = {
-            "Authorization": f"Bearer {self.token}"
-        }
-
-        if self.is_finance:
-            target_url = f"{API_URL}/api/v1/finance"
-            params = {}  # 金融CSVは確定処理のため、パイプライン起動スイッチ等は不要（常に起動）
-        else:
-            target_url = f"{API_URL}/api/v1/ingest"
-            params = {"trigger_pipeline": str(self.trigger_pipeline).lower()}
+        self.is_loading = False
 
         try:
-            async with httpx.AsyncClient(timeout=180.0) as client:
-                response = await client.post(
-                    target_url,
-                    files=form_files,
-                    headers=headers,
-                    params=params
-                )
-                if response.status_code == 200:
-                    res_data = response.json()
-                    self.upload_results = res_data.get("files", [])
-                    self.ingest_message = res_data.get("message", "インジェスト処理が正常に受理されました。")
-                else:
-                    self.ingest_message = f"エラー (Status {response.status_code}): {response.text}"
-        except Exception as e:
-            self.ingest_message = f"パイプラインへの投入通信に失敗しました: {str(e)}"
-        finally:
-            self.is_loading = False
+            payload = json.loads(result) if isinstance(result, str) else result
 
+            if not payload.get("ok"):
+                status = payload.get("status", "通信エラー")
+                body = payload.get("body", "")
+
+                try:
+                    detail = json.loads(body).get("detail", body)
+                except Exception:
+                    detail = body
+
+                self.ingest_message = (
+                    f"アップロードに失敗しました "
+                    f"(Status {status}): {detail}"
+                )
+                return
+
+            response_data = json.loads(payload.get("body") or "{}")
+
+            self.upload_results = response_data.get("files", [])
+            self.ingest_message = response_data.get(
+                "message",
+                "アップロードを受け付けました。",
+            )
+
+        except Exception as e:
+            logger.exception(
+                "Failed to process browser upload response"
+            )
+            self.ingest_message = (
+                f"アップロード結果の処理に失敗しました: {str(e)}"
+            )
     # ----------------------------------------------------------------
     # レシート確認: 一覧
     # ----------------------------------------------------------------
