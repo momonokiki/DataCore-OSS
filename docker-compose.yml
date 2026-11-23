@@ -108,6 +108,7 @@ services:
     environment:
       - PYTHONPATH=/app
       - API_URL=http://fastapi:8000
+      - REFLEX_API_URL=http://localhost:${WEBUI_PORT:-3000}
     volumes:
       - .:/app
     depends_on:
