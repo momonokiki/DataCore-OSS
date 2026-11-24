@@ -2,6 +2,7 @@ import logging
 
 from app.layers.l2_extracted.media_info.inspectors.base import (
     BaseInspector,
+    InspectionResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -11,22 +12,22 @@ class BinaryInspector(BaseInspector):
     """マジックバイトによるバイナリ形式の識別."""
 
     SIGNATURES = (
-        (b"\xFF\xD8\xFF", "image/jpeg"),
-        (b"\x89PNG\r\n\x1a\n", "image/png"),
-        (b"GIF87a", "image/gif"),
-        (b"GIF89a", "image/gif"),
-        (b"%PDF-", "application/pdf"),
-        (b"ID3", "audio/mpeg"),
-        (b"fLaC", "audio/flac"),
-        (b"OggS", "application/ogg"),
-        (b"\x1A\x45\xDF\xA3", "video/x-matroska"),
-        (b"PK\x03\x04", "application/zip"),
+        (b"\xFF\xD8\xFF", "image/jpeg", "jpeg"),
+        (b"\x89PNG\r\n\x1a\n", "image/png", "png"),
+        (b"GIF87a", "image/gif", "gif"),
+        (b"GIF89a", "image/gif", "gif"),
+        (b"%PDF-", "application/pdf", "pdf"),
+        (b"ID3", "audio/mpeg", "mp3"),
+        (b"fLaC", "audio/flac", "flac"),
+        (b"OggS", "application/ogg", "ogg"),
+        (b"\x1A\x45\xDF\xA3", "video/x-matroska", "matroska"),
+        (b"PK\x03\x04", "application/zip", "zip"),
     )
 
     RIFF_TYPES = {
-        b"WEBP": "image/webp",
-        b"WAVE": "audio/wav",
-        b"AVI ": "video/x-msvideo",
+        b"WEBP": ("image/webp", "webp"),
+        b"WAVE": ("audio/wav", "wav"),
+        b"AVI ": ("video/x-msvideo", "avi"),
     }
 
     MP4_BRANDS = {
@@ -48,30 +49,36 @@ class BinaryInspector(BaseInspector):
         self,
         file_content: bytes,
         extension: str | None = None,
-    ) -> str | None:
+    ) -> InspectionResult | None:
         if not file_content:
             return None
 
         # 1. ISO Base Media File Format（MP4 / QuickTime）
-        mime_type = self._detect_iso_bmff(file_content)
+        result = self._detect_iso_bmff(file_content)
 
-        if mime_type:
-            return self._log_detection(mime_type)
+        if result:
+            return self._log_detection(*result)
 
         # 2. RIFFコンテナ（WebP / WAV / AVI）
-        mime_type = self._detect_riff(file_content)
+        result = self._detect_riff(file_content)
 
-        if mime_type:
-            return self._log_detection(mime_type)
+        if result:
+            return self._log_detection(*result)
 
         # 3. その他のマジックバイト
-        for signature, mime_type in self.SIGNATURES:
+        for signature, mime_type, format_type in self.SIGNATURES:
             if file_content.startswith(signature):
-                return self._log_detection(mime_type)
+                return self._log_detection(
+                    mime_type,
+                    format_type,
+                )
 
         return None
 
-    def _detect_iso_bmff(self, file_content: bytes) -> str | None:
+    def _detect_iso_bmff(
+        self,
+        file_content: bytes,
+    ) -> tuple[str, str] | None:
         if len(file_content) < 12:
             return None
 
@@ -81,10 +88,10 @@ class BinaryInspector(BaseInspector):
         brand = file_content[8:12]
 
         if brand == b"qt  ":
-            return "video/quicktime"
+            return "video/quicktime", "quicktime"
 
         if brand in self.MP4_BRANDS:
-            return "video/mp4"
+            return "video/mp4", "mp4"
 
         logger.debug(
             "Unsupported ISO BMFF brand: %s",
@@ -93,7 +100,10 @@ class BinaryInspector(BaseInspector):
 
         return None
 
-    def _detect_riff(self, file_content: bytes) -> str | None:
+    def _detect_riff(
+        self,
+        file_content: bytes,
+    ) -> tuple[str, str] | None:
         if len(file_content) < 12:
             return None
 
@@ -104,9 +114,17 @@ class BinaryInspector(BaseInspector):
         return self.RIFF_TYPES.get(riff_type)
 
     @staticmethod
-    def _log_detection(mime_type: str) -> str:
+    def _log_detection(
+        mime_type: str,
+        format_type: str,
+    ) -> InspectionResult:
         logger.debug(
-            "Binary format detected: %s",
+            "Binary format detected: mime_type=%s, format_type=%s",
             mime_type,
+            format_type,
         )
-        return mime_type
+
+        return InspectionResult(
+            mime_type=mime_type,
+            format_type=format_type,
+        )

@@ -1,4 +1,3 @@
-
 import argparse
 import asyncio
 import json
@@ -104,6 +103,7 @@ async def detect_file(file_hash: str) -> dict:
         "content_size_bytes": len(file_content),
         "registered_mime_type": registered_mime_type,
         "detected_mime_type": detection.mime_type,
+        "detected_format_type": detection.format_type,
         "detected": detection.detected,
         "detection_method": detection.detection_method,
         "mime_type_matches": (
@@ -165,4 +165,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

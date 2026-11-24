@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 
 from app.layers.l2_extracted.media_info.inspectors.base import (
     BaseInspector,
+    InspectionResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,11 +26,16 @@ class TextInspector(BaseInspector):
     MIN_CSV_COLUMNS = 2
     MIN_CSV_ROWS = 2
 
+    GPX_NAMESPACES = {
+        "http://www.topografix.com/GPX/1/0",
+        "http://www.topografix.com/GPX/1/1",
+    }
+
     def inspect(
         self,
         file_content: bytes,
         extension: str | None = None,
-    ) -> str | None:
+    ) -> InspectionResult | None:
         if not file_content:
             return None
 
@@ -44,11 +50,19 @@ class TextInspector(BaseInspector):
 
         # XMLを先に判定
         if self._is_xml(text):
-            return self._log_detection("application/xml")
+            format_type = self._detect_xml_format(text)
+
+            return self._log_detection(
+                "application/xml",
+                format_type,
+            )
 
         # CSVを判定
         if self._is_csv(text, extension):
-            return self._log_detection("text/csv")
+            return self._log_detection(
+                "text/csv",
+                "csv",
+            )
 
         return None
 
@@ -72,6 +86,32 @@ class TextInspector(BaseInspector):
             return True
         except ET.ParseError:
             return False
+
+    def _detect_xml_format(self, text: str) -> str:
+        """
+        XMLのルート要素から形式を識別する。
+
+        GPXはルート要素名とnamespaceの両方を確認する。
+        それ以外のXMLは一般形式として扱う。
+        """
+
+        try:
+            root = ET.fromstring(text)
+        except ET.ParseError:
+            return "xml"
+
+        if not root.tag.startswith("{"):
+            return "xml"
+
+        namespace, _, local_name = root.tag[1:].partition("}")
+
+        if (
+            local_name == "gpx"
+            and namespace in self.GPX_NAMESPACES
+        ):
+            return "gpx"
+
+        return "xml"
 
     def _is_csv(
         self,
@@ -175,9 +215,17 @@ class TextInspector(BaseInspector):
         return False
 
     @staticmethod
-    def _log_detection(mime_type: str) -> str:
+    def _log_detection(
+        mime_type: str,
+        format_type: str,
+    ) -> InspectionResult:
         logger.debug(
-            "Text format detected: %s",
+            "Text format detected: mime_type=%s, format_type=%s",
             mime_type,
+            format_type,
         )
-        return mime_type
+
+        return InspectionResult(
+            mime_type=mime_type,
+            format_type=format_type,
+        )

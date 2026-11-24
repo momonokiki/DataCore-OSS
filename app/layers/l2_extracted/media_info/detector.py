@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 
-
 from app.layers.l2_extracted.media_info.inspectors.binary import (
     BinaryInspector,
 )
@@ -14,6 +13,7 @@ class DetectionResult:
     mime_type: str
     detected: bool
     detection_method: str
+    format_type: str | None = None
 
 
 class MediaTypeDetector:
@@ -33,6 +33,7 @@ class MediaTypeDetector:
                 mime_type=self.UNKNOWN_MIME_TYPE,
                 detected=False,
                 detection_method="none",
+                format_type=None,
             )
 
         extension = self._get_extension(filename)
@@ -46,9 +47,10 @@ class MediaTypeDetector:
 
         if binary_result:
             return DetectionResult(
-                mime_type=binary_result,
+                mime_type=binary_result.mime_type,
                 detected=True,
                 detection_method="binary",
+                format_type=binary_result.format_type,
             )
 
         # 2. テキスト形式の判定
@@ -60,15 +62,17 @@ class MediaTypeDetector:
 
         if text_result:
             return DetectionResult(
-                mime_type=text_result,
+                mime_type=text_result.mime_type,
                 detected=True,
                 detection_method="text",
+                format_type=text_result.format_type,
             )
 
         return DetectionResult(
             mime_type=self.UNKNOWN_MIME_TYPE,
             detected=False,
             detection_method="none",
+            format_type=None,
         )
 
     @staticmethod
