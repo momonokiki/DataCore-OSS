@@ -44,7 +44,11 @@ class BinaryInspector(BaseInspector):
         b"M4VP",
     }
 
-    def inspect(self, file_content: bytes) -> str | None:
+    def inspect(
+        self,
+        file_content: bytes,
+        extension: str | None = None,
+    ) -> str | None:
         if not file_content:
             return None
 

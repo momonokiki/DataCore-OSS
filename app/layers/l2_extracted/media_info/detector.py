@@ -1,5 +1,5 @@
-
 from dataclasses import dataclass
+
 
 from app.layers.l2_extracted.media_info.inspectors.binary import (
     BinaryInspector,
@@ -23,7 +23,11 @@ class MediaTypeDetector:
         self.binary_inspector = BinaryInspector()
         self.text_inspector = TextInspector()
 
-    def detect(self, file_content: bytes) -> DetectionResult:
+    def detect(
+        self,
+        file_content: bytes,
+        filename: str | None = None,
+    ) -> DetectionResult:
         if not file_content:
             return DetectionResult(
                 mime_type=self.UNKNOWN_MIME_TYPE,
@@ -31,8 +35,14 @@ class MediaTypeDetector:
                 detection_method="none",
             )
 
+        extension = self._get_extension(filename)
+
         # 1. バイナリ形式の判定
-        binary_result = self.binary_inspector.inspect(file_content)
+        # 拡張子に関係なく、実データのマジックバイトを優先する
+        binary_result = self.binary_inspector.inspect(
+            file_content,
+            extension,
+        )
 
         if binary_result:
             return DetectionResult(
@@ -42,7 +52,11 @@ class MediaTypeDetector:
             )
 
         # 2. テキスト形式の判定
-        text_result = self.text_inspector.inspect(file_content)
+        # 拡張子は判定の補助情報として使用する
+        text_result = self.text_inspector.inspect(
+            file_content,
+            extension,
+        )
 
         if text_result:
             return DetectionResult(
@@ -57,3 +71,21 @@ class MediaTypeDetector:
             detection_method="none",
         )
 
+    @staticmethod
+    def _get_extension(filename: str | None) -> str | None:
+        if not filename:
+            return None
+
+        # Windows形式のパス区切りにも対応
+        normalized_filename = filename.replace("\\", "/")
+        basename = normalized_filename.rsplit("/", 1)[-1]
+
+        if "." not in basename:
+            return None
+
+        extension = basename.rsplit(".", 1)[-1]
+
+        if not extension:
+            return None
+
+        return f".{extension.lower()}"

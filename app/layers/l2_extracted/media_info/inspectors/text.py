@@ -15,14 +15,27 @@ class TextInspector(BaseInspector):
 
     MAX_SAMPLE_SIZE = 64 * 1024
 
-    def inspect(self, file_content: bytes) -> str | None:
+    TEXT_ENCODINGS = (
+        "utf-8-sig",
+        "cp932",
+    )
+
+    CSV_DELIMITERS = ",;\t|"
+
+    MIN_CSV_COLUMNS = 2
+    MIN_CSV_ROWS = 2
+
+    def inspect(
+        self,
+        file_content: bytes,
+        extension: str | None = None,
+    ) -> str | None:
         if not file_content:
             return None
 
-        # UTF-8 BOMを考慮してデコード
-        try:
-            text = file_content.decode("utf-8-sig")
-        except UnicodeDecodeError:
+        text = self._decode_text(file_content)
+
+        if text is None:
             return None
 
         # バイナリ混入の可能性が高いデータは対象外
@@ -34,8 +47,17 @@ class TextInspector(BaseInspector):
             return self._log_detection("application/xml")
 
         # CSVを判定
-        if self._is_csv(text):
+        if self._is_csv(text, extension):
             return self._log_detection("text/csv")
+
+        return None
+
+    def _decode_text(self, file_content: bytes) -> str | None:
+        for encoding in self.TEXT_ENCODINGS:
+            try:
+                return file_content.decode(encoding)
+            except UnicodeDecodeError:
+                continue
 
         return None
 
@@ -51,28 +73,40 @@ class TextInspector(BaseInspector):
         except ET.ParseError:
             return False
 
-    def _is_csv(self, text: str) -> bool:
+    def _is_csv(
+        self,
+        text: str,
+        extension: str | None = None,
+    ) -> bool:
         sample = text[:self.MAX_SAMPLE_SIZE]
 
+        # CSV拡張子がある場合は帳票ヘッダー等を許容する
+        if extension == ".csv":
+            return self._is_csv_with_header(sample)
+
+        # 拡張子がない場合は従来に近い厳格な判定
+        return self._is_strict_csv(sample)
+
+    def _is_strict_csv(self, sample: str) -> bool:
         try:
             dialect = csv.Sniffer().sniff(
                 sample,
-                delimiters=",;\t|",
+                delimiters=self.CSV_DELIMITERS,
             )
 
             rows = list(
                 csv.reader(
                     io.StringIO(sample),
                     dialect,
-            )
+                )
             )
 
-            if len(rows) < 2:
+            if len(rows) < self.MIN_CSV_ROWS:
                 return False
 
             column_count = len(rows[0])
 
-            if column_count < 2:
+            if column_count < self.MIN_CSV_COLUMNS:
                 return False
 
             return all(
@@ -83,6 +117,62 @@ class TextInspector(BaseInspector):
 
         except csv.Error:
             return False
+
+    def _is_csv_with_header(self, sample: str) -> bool:
+        """
+        CSV拡張子がある場合の緩和判定。
+
+        先頭に帳票情報やヘッダーが存在しても、
+        その後に一定数の列構造が揃った行があれば候補とする。
+        """
+
+        for delimiter in self.CSV_DELIMITERS:
+            try:
+                rows = list(
+                    csv.reader(
+                        io.StringIO(sample),
+                        delimiter=delimiter,
+                    )
+                )
+            except csv.Error:
+                continue
+
+            if self._has_consistent_rows(rows):
+                return True
+
+        return False
+
+    def _has_consistent_rows(self, rows: list[list[str]]) -> bool:
+        """
+        連続する行の列数が一致する領域を探す。
+
+        空行は判定から除外する。
+        """
+
+        consecutive_count = 0
+        previous_column_count = None
+
+        for row in rows:
+            if not row or not any(cell.strip() for cell in row):
+                continue
+
+            column_count = len(row)
+
+            if column_count < self.MIN_CSV_COLUMNS:
+                consecutive_count = 0
+                previous_column_count = None
+                continue
+
+            if column_count == previous_column_count:
+                consecutive_count += 1
+            else:
+                consecutive_count = 1
+                previous_column_count = column_count
+
+            if consecutive_count >= self.MIN_CSV_ROWS:
+                return True
+
+        return False
 
     @staticmethod
     def _log_detection(mime_type: str) -> str:
