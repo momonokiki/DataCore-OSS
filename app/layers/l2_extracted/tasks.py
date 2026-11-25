@@ -1,4 +1,3 @@
-
 import asyncio
 
 from app.celery_app import celery_app
@@ -23,6 +22,7 @@ def extract_media_info_task(file_hash: str) -> dict:
     """
     メディアメタデータ抽出タスク。
     EXIFや物理属性をL2MediaInfoに永続化する。
+    プラグインの選択はオーケストレータ側が format_type で行う。
     """
     print(
         "[Celery Worker] Media Metadata Extraction Task "
@@ -32,7 +32,6 @@ def extract_media_info_task(file_hash: str) -> dict:
     res = asyncio.run(
         media_info_orchestrator(
             file_hash=str(file_hash),
-            plugin_name="image_exif_extractor",
         )
     )
 
@@ -181,4 +180,3 @@ def embedding_file_task(context: dict) -> dict:
     )
 
     return output_context
-
