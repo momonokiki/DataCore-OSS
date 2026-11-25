@@ -1,5 +1,6 @@
 import getpass
 import sys
+import app.db_all_models
 from sqlalchemy.exc import IntegrityError
 from app.infrastructure.db.session import get_sync_db_session
 from app.infrastructure.db.models.users import User
