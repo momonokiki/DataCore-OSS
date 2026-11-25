@@ -1,5 +1,6 @@
 from celery import Celery
 
+import app.db_all_models
 from app.core.config import settings
 
 
