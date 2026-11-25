@@ -40,6 +40,7 @@ class WebUIState(rx.State):
     is_loading: bool = False
     trigger_pipeline: bool = True
     is_finance: bool = False
+    is_gpx: bool = False
 
     # ================================================================
     # レシート確認ページ用のステート
@@ -105,6 +106,14 @@ class WebUIState(rx.State):
     def toggle_finance(self, checked: bool):
         """UI上で金融明細CSVトグルが切り替えられた時のイベントハンドラ"""
         self.is_finance = checked
+        if checked:
+            self.is_gpx = False
+
+    def toggle_gpx(self, checked: bool):
+        """UI上でGPX滞在検出トグルが切り替えられた時のイベントハンドラ"""
+        self.is_gpx = checked
+        if checked:
+            self.is_finance = False
 
     def _auth_headers(self) -> Dict[str, str]:
         return {"Authorization": f"Bearer {self.token}"}

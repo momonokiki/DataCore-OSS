@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.api.routes.ingest import router as ingest_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.finance import router as finance_router
+from app.api.routes.gpx import router as gpx_router
 from app.api.routes.receipts import router as receipts_router
 from app.infrastructure.db.session import get_sync_db_session
 from app.api.routes.search import router as search_router
@@ -33,6 +34,7 @@ app.add_middleware(
 app.include_router(ingest_router)
 app.include_router(auth_router)
 app.include_router(finance_router)
+app.include_router(gpx_router)
 app.include_router(receipts_router)
 app.include_router(search_router)
 

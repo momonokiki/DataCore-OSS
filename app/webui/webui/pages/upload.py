@@ -59,6 +59,7 @@ def upload_content() -> rx.Component:
     (async () => {
         const fileInput = document.getElementById("direct-upload-files");
         const financeInput = document.getElementById("direct-upload-finance");
+        const gpxInput = document.getElementById("direct-upload-gpx");
         const pipelineInput = document.getElementById("direct-upload-pipeline");
         const apiPortInput = document.getElementById("direct-upload-api-port");
 
@@ -107,6 +108,7 @@ def upload_content() -> rx.Component:
         }
 
         const isFinance = financeInput.value === "true";
+        const isGpx = gpxInput.value === "true";
         const triggerPipeline = pipelineInput.value !== "false";
 
         // multipart/form-dataを構築
@@ -126,11 +128,13 @@ def upload_content() -> rx.Component:
 
         const endpoint = isFinance
             ? "/api/v1/finance"
-            : "/api/v1/ingest";
+            : isGpx
+              ? "/api/v1/gpx"
+              : "/api/v1/ingest";
 
         const url = new URL(apiBase + endpoint);
 
-        if (!isFinance) {
+        if (!isFinance && !isGpx) {
             url.searchParams.set(
                 "trigger_pipeline",
                 String(triggerPipeline)
@@ -231,11 +235,50 @@ def upload_content() -> rx.Component:
                     border_radius="md",
                 ),
 
+
+                # GPX滞在検出設定
+                rx.hstack(
+                    rx.vstack(
+                        rx.text(
+                            "GPXの滞在検出として処理する",
+                            size="2",
+                            font_weight="medium",
+                        ),
+                        rx.text(
+                            "※GPSロガーのGPXから滞在（重心・滞在時間）を抽出します",
+                            size="1",
+                            color="teal",
+                        ),
+                        align_items="start",
+                        spacing="0",
+                    ),
+                    rx.switch(
+                        is_checked=WebUIState.is_gpx,
+                        on_change=WebUIState.toggle_gpx,
+                        color_scheme="teal",
+                    ),
+                    justify="between",
+                    width="100%",
+                    padding_y="2",
+                    background_color=rx.cond(
+                        WebUIState.is_gpx,
+                        "#E6FFFA",
+                        "transparent",
+                    ),
+                    padding_x="2",
+                    border_radius="md",
+                ),
+
                 # ブラウザ側JavaScriptから参照する設定値
                 rx.el.input(
                     type="hidden",
                     id="direct-upload-finance",
                     value=WebUIState.is_finance.to(str),
+                ),
+                rx.el.input(
+                    type="hidden",
+                    id="direct-upload-gpx",
+                    value=WebUIState.is_gpx.to(str),
                 ),
                 rx.el.input(
                     type="hidden",
