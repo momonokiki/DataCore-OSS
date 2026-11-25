@@ -253,7 +253,7 @@ def upload_content() -> rx.Component:
                     type="file",
                     id="direct-upload-files",
                     multiple=True,
-                    accept="image/*,.pdf,.csv",
+                    accept="image/*,.pdf,.csv,.gpx,application/gpx+xml",
                     style={
                         "width": "100%",
                         "padding": "18px",

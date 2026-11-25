@@ -13,11 +13,13 @@ from app.infrastructure.db.models.l2_tools import L2Tool
 from app.layers.l2_extracted.models import L2MediaInfo
 from app.layers.l1_raw.models import L1File
 from app.layers.l2_extracted.media_info.detector import MediaTypeDetector
+from app.layers.l2_extracted.media_info.gpx import GpxPlugin
 from app.layers.l2_extracted.media_info.image_exif import ImageExifPlugin
 
 logger = logging.getLogger(__name__)
 
 _IMAGE_EXIF_PLUGIN = ImageExifPlugin()
+_GPX_PLUGIN = GpxPlugin()
 
 # format_type -> プラグイン の対応表。
 # 形式の追加は「プラグインの追加 + ここに1行」で行う。
@@ -25,6 +27,7 @@ MEDIA_INFO_PLUGINS_BY_FORMAT: dict[str, Any] = {
     "jpeg": _IMAGE_EXIF_PLUGIN,
     "png": _IMAGE_EXIF_PLUGIN,
     "webp": _IMAGE_EXIF_PLUGIN,
+    "gpx": _GPX_PLUGIN,
 }
 
 
